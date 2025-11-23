@@ -178,13 +178,12 @@ def search_google_news(query, hl="zh-TW", gl="tw"):
 # --- 4. AI 分析函式 ---
 def analyze_with_gpt(company_name, all_search_results_list):
     # [設定] OpenAI 模型選擇
-    # 建議使用 "gpt-4o" 或 "gpt-4o-mini"。目前無 "gpt-5 nano" 模型。
     OPENAI_MODEL_NAME = "gpt-4o" 
 
     all_organic_results = []
     seen_links = set()
     
-    # 資料清洗與去重 (針對連結 URL)
+    # 資料清洗與去重
     for result_dict in all_search_results_list:
         if 'organic' in result_dict:
             for item in result_dict['organic']:
@@ -203,14 +202,14 @@ def analyze_with_gpt(company_name, all_search_results_list):
 
     # 建構 Context
     news_text = ""
-    for item in all_organic_results[:15]: # 增加閱讀量至 15 筆
+    for item in all_organic_results[:20]:
         title = item.get('title', 'No Title')
         snippet = item.get('snippet', 'No Snippet')
         link = item.get('link', '')
         date = item.get('date', 'Unknown Date')
         news_text += f"- [Date: {date}] {title} ({link}): {snippet}\n"
 
-    # [設定] 優化後的 System Prompt
+    # [設定] 優化後的 System Prompt (全繁體中文輸出版)
     prompt = f"""
     You are a strict VC investment analyst. Today is: {today_str}.
     Task: Review the global search results for portfolio company "{company_name}".
@@ -218,6 +217,7 @@ def analyze_with_gpt(company_name, all_search_results_list):
     【Time Filter】
     - Focus on news between **{seven_days_ago_str} and {today_str}**.
     - **Important Exception**: If a news item has NO date or an ambiguous date (e.g., "Recent"), but the content seems highly relevant and new, **INCLUDE IT**. Do not miss major events due to missing date tags.
+    - Only exclude news clearly marked as "1 year ago", "2023", etc.
     - If no relevant news at all, reply exactly: "No huge updates".
 
     【Consolidation & Deduplication】
@@ -233,12 +233,9 @@ def analyze_with_gpt(company_name, all_search_results_list):
     6. [👤 PEOPLE] (C-Level changes)
 
     【Output Language Rules】
-    1. If the news source is primarily **Taiwan/Chinese**:
-       - Output the summary in **Traditional Chinese**.
-       - Limit length to **50 characters** max.
-    2. If the news source is **Japan, US, or other**:
-       - Output the summary in **English**.
-       - Limit length to **100 words** max.
+    - **Global Translation**: Regardless of the source language (English, Japanese, etc.), ALL outputs (Titles and Summaries) must be in **Traditional Chinese (繁體中文)**.
+    - **Tag Retention**: Keep the Categorization Tags in **English** (e.g., [💰 FUNDING]).
+    - Summary Length: Concise, approximately **50-100 characters**.
 
     【Database】
     {news_text}
@@ -246,8 +243,8 @@ def analyze_with_gpt(company_name, all_search_results_list):
     【Output Format】
     If news exists, output in this exact format:
 
-    **Tag | Title (in English)**
-    - (Summary in Traditional Chinese or English based on rules above)
+    **Tag | Title (in Traditional Chinese)**
+    - (Summary in Traditional Chinese)
     🔍 Source: [Link Title](Link) (Provide only 1 best source link)
     """
 
@@ -261,7 +258,7 @@ def analyze_with_gpt(company_name, all_search_results_list):
         if 'error' in result: return f"API Error: {result['error']['message']}"
         content = result['choices'][0]['message']['content']
         
-        # [重要修正] 必須偵測英文的 "No huge updates"
+        # 偵測無消息的關鍵字
         if "No huge updates" in content or "無重大消息" in content:
             return None
             
