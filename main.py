@@ -227,7 +227,7 @@ def analyze_with_gpt(company_name, all_search_results_list):
     Classify news into these **English Tags** ONLY:
     1. [🚨 CRISIS] (PR crisis, viral controversy, lawsuits)
     2. [💰 FUNDING] (Fundraising, M&A, IPO)
-    3. [🚀 PRODUCT] (New product launch, major updates)
+    3. [🚀 PRODUCT] (New product launch, New markets expansion)
     4. [📢 EVENT] (Major brand events, exhibitions)
     5. [🤝 PARTNERSHIP] (Strategic alliances)
     6. [👤 PEOPLE] (C-Level changes)
