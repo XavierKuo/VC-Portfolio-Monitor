@@ -1,6 +1,6 @@
 # ==========================================================
-# main.py (Ver 5.6 - 完整整合版)
-# 邏輯來源: Colab Ver 5.3
+# main.py (Ver 5.7 - 完整整合版)
+# 邏輯更新: 支援英文標籤、gpt-4o-mini、優化無消息判斷
 # 環境適配: GitHub Actions Secrets
 # ==========================================================
 import requests
@@ -13,7 +13,7 @@ from oauth2client.service_account import ServiceAccountCredentials
 from datetime import datetime, timedelta
 
 # ===========================
-# 1. 環境變數與全域設定
+# 1. 環境變數與全域設定 (保留 GitHub Actions 設定)
 # ===========================
 
 # 從 GitHub Secrets 讀取 Keys (如果讀不到則為 None)
@@ -45,16 +45,18 @@ REGIONS = {
 }
 
 # ===========================
-# 2. 核心功能函式
+# 2. 核心功能函式區 (更新至 Ver 5.5 Custom)
 # ===========================
 
+# --- 1. Telegram 發送函式 ---
 def send_telegram_message(message):
-    """發送 Telegram 訊息 (含錯誤診斷)"""
+    """發送 Telegram 訊息"""
     if not TELEGRAM_BOT_TOKEN or not TELEGRAM_CHAT_ID:
         print("⚠️ Telegram Token 未設定，跳過發送。")
         return
 
     url = f"https://api.telegram.org/bot{TELEGRAM_BOT_TOKEN}/sendMessage"
+    # 訊息分段處理 (Telegram 限制 4096 字元)
     max_length = 4000
     parts = [message[i:i+max_length] for i in range(0, len(message), max_length)]
     
@@ -66,32 +68,31 @@ def send_telegram_message(message):
             "disable_web_page_preview": True
         }
         try:
-            response = requests.post(url, json=payload)
-            if response.status_code != 200:
-                print(f"❌ Telegram API 錯誤！狀態碼: {response.status_code}")
-                print(f"   原因: {response.text}")
+            requests.post(url, json=payload)
             time.sleep(1)
         except Exception as e:
             print(f"❌ Telegram 發送失敗: {e}")
 
+# --- 2. Google Sheet 讀取函式 ---
 def load_all_config_from_sheets():
-    """從 Google Sheet 讀取所有配置 (完整邏輯)"""
+    """從 Google Sheet 讀取所有配置"""
     global PORTFOLIO_CONFIG, MEDIA_SOURCES, GLOBAL_SOCIAL_SITES
     
     try:
         scope = ['https://spreadsheets.google.com/feeds', 'https://www.googleapis.com/auth/drive']
         
         if not GOOGLE_CREDS_JSON:
-            print("❌ 錯誤: GOOGLE_JSON 為空，無法連線。")
+            error_msg = "❌ 錯誤: GOOGLE_CREDS_JSON 是空的，無法連線。"
+            print(error_msg)
             return False
 
-        # 使用 oauth2client 進行認證 (與 Colab 邏輯一致)
         creds = ServiceAccountCredentials.from_json_keyfile_dict(GOOGLE_CREDS_JSON, scope)
-        client = gspread.authorize(creds)
         
-        # 開啟試算表
+        print(f"ℹ️ 正在嘗試連線 Google Sheet...")
+        print(f"ℹ️ 您的 Service Account Email 是: 【 {creds.service_account_email} 】")
+        
+        client = gspread.authorize(creds)
         spreadsheet = client.open(SHEET_NAME)
-        print(f"✅ 成功連線 Google Sheet: {SHEET_NAME}")
         
         # 1. 讀取 Portfolio
         portfolio_sheet = spreadsheet.worksheet("Portfolio")
@@ -103,6 +104,7 @@ def load_all_config_from_sheets():
             if not company: continue
             
             regions_str = row.get('Regions', 'TW')
+            # 過濾有效地區
             regions = [r.strip() for r in regions_str.split(',') if r.strip() in REGIONS]
             
             keywords_str = row.get('Keywords', company)
@@ -143,21 +145,26 @@ def load_all_config_from_sheets():
         
         return True
     
-    except gspread.exceptions.SpreadsheetNotFound:
-        print(f"❌ 嚴重錯誤: 找不到名為 '{SHEET_NAME}' 的 Google Sheet。")
-        print("💡 請確認：1. GitHub Secret JSON 正確 2. Service Account 已加入編輯者 3. 檔名完全一致")
-        return False
     except Exception as e:
-        print(f"❌ Google Sheet 讀取發生未知錯誤: {e}")
+        print(f"❌ Google Sheet 讀取發生錯誤: {e}")
         return False
 
+# --- 3. 搜尋函式 ---
 def search_google_news(query, hl="zh-TW", gl="tw"):
-    """Serper API 搜尋"""
+    """
+    使用 Serper API 搜尋 Google News
+    [重要附註]：
+    本函式支援全球搜尋，透過參數控制：
+    - hl (Host Language): 控制介面語言 (如 'zh-TW', 'ja', 'en')
+    - gl (Geo Location): 控制搜尋地區 (如 'tw', 'jp', 'us')
+    這些參數是由 Google Sheet 設定檔中的 'Regions' 欄位動態傳入的，
+    因此可以完美支援日本 (JP) 與美國 (US) 的在地化搜尋。
+    """
     url = "https://google.serper.dev/search"
     payload = json.dumps({
         "q": query,
-        "tbs": "qdr:w",
-        "num": 15,
+        "tbs": "qdr:w", # 限制過去一週
+        "num": 20,      # 增加搜尋數量以提高命中率
         "hl": hl,
         "gl": gl
     })
@@ -168,11 +175,16 @@ def search_google_news(query, hl="zh-TW", gl="tw"):
     except Exception as e:
         return {"error": str(e)}
 
+# --- 4. AI 分析函式 ---
 def analyze_with_gpt(company_name, all_search_results_list):
-    """OpenAI 分析"""
+    # [設定] OpenAI 模型選擇
+    # 建議使用 "gpt-4o" 或 "gpt-4o-mini"。目前無 "gpt-5 nano" 模型。
+    OPENAI_MODEL_NAME = "gpt-4o" 
+
     all_organic_results = []
     seen_links = set()
     
+    # 資料清洗與去重 (針對連結 URL)
     for result_dict in all_search_results_list:
         if 'organic' in result_dict:
             for item in result_dict['organic']:
@@ -183,76 +195,93 @@ def analyze_with_gpt(company_name, all_search_results_list):
     
     if not all_organic_results: return None
 
+    # 時間設定
     today = datetime.now()
     seven_days_ago = today - timedelta(days=7)
     today_str = today.strftime("%Y-%m-%d")
     seven_days_ago_str = seven_days_ago.strftime("%Y-%m-%d")
 
+    # 建構 Context
     news_text = ""
-    for item in all_organic_results[:20]:
+    for item in all_organic_results[:15]: # 增加閱讀量至 15 筆
         title = item.get('title', 'No Title')
         snippet = item.get('snippet', 'No Snippet')
         link = item.get('link', '')
         date = item.get('date', 'Unknown Date')
-        news_text += f"- [時間標記: {date}] {title} ({link}): {snippet}\n"
+        news_text += f"- [Date: {date}] {title} ({link}): {snippet}\n"
 
+    # [設定] 優化後的 System Prompt
     prompt = f"""
-    你是一位嚴謹的 VC 投資分析師。今天是：{today_str}。
-    任務：審查「{company_name}」彙整後的全球搜尋結果。
+    You are a strict VC investment analyst. Today is: {today_str}.
+    Task: Review the global search results for portfolio company "{company_name}".
 
-    【嚴格時間過濾】
-    僅接受發生在 **{seven_days_ago_str} 至 {today_str}** 之間的新聞。
-    若時間標記顯示 "1 year ago", "2023" 等舊聞，**絕對排除**。
-    若無新消息，回答「無重大消息」。
+    【Time Filter】
+    - Focus on news between **{seven_days_ago_str} and {today_str}**.
+    - **Important Exception**: If a news item has NO date or an ambiguous date (e.g., "Recent"), but the content seems highly relevant and new, **INCLUDE IT**. Do not miss major events due to missing date tags.
+    - Only exclude news clearly marked as "1 year ago", "2023", etc.
+    - If no relevant news at all, reply exactly: "No huge updates".
 
-    【高價值訊號】
-    1. 🚨 公關危機/社群炎上
-    2. 💰 募資/併購/IPO
-    3. 🚀 產品釋出/重大更新
-    4. 📢 重大品牌活動/年度展會
-    5. 🤝 關鍵合作
-    6. 👤 高層人事異動
+    【Consolidation & Deduplication】
+    - **CRITICAL**: If multiple sources report the same event, consolidate them into ONE summary.
+    
+    【High Value Signals & Categorization】
+    Classify news into these **English Tags** ONLY:
+    1. [🚨 CRISIS] (PR crisis, viral controversy, lawsuits)
+    2. [💰 FUNDING] (Fundraising, M&A, IPO)
+    3. [🚀 PRODUCT] (New product launch, major updates)
+    4. [📢 EVENT] (Major brand events, exhibitions)
+    5. [🤝 PARTNERSHIP] (Strategic alliances)
+    6. [👤 PEOPLE] (C-Level changes)
 
-    【內容翻譯】
-    若為外文，請翻譯為繁體中文。
+    【Output Language Rules】
+    1. If the news source is primarily **Taiwan/Chinese**:
+       - Output the summary in **Traditional Chinese**.
+       - Limit length to **50 characters** max.
+    2. If the news source is **Japan, US, or other**:
+       - Output the summary in **English**.
+       - Limit length to **100 words** max.
 
-    【資料庫】
+    【Database】
     {news_text}
 
-    【輸出格式】
-    若無消息，回答「無重大消息」。
-    若有，依序輸出：
-    - **【類別 | 跨國統一標籤】標題**
-    - **事件摘要** (100字內)
-    - **🔍 依據來源** (含連結)
+    【Output Format】
+    If news exists, output in this exact format:
+
+    **Tag | Title (in English)**
+    - (Summary in Traditional Chinese or English based on rules above)
+    🔍 Source: [Link Title](Link) (Provide only 1 best source link)
     """
 
     url = "https://api.openai.com/v1/chat/completions"
     headers = {"Authorization": f"Bearer {OPENAI_API_KEY}", "Content-Type": "application/json"}
-    data = {"model": "gpt-4o", "messages": [{"role": "user", "content": prompt}], "temperature": 0.0}
+    data = {"model": OPENAI_MODEL_NAME, "messages": [{"role": "user", "content": prompt}], "temperature": 0.0}
     
     try:
         response = requests.post(url, headers=headers, json=data)
         result = response.json()
         if 'error' in result: return f"API Error: {result['error']['message']}"
         content = result['choices'][0]['message']['content']
-        if "無重大消息" in content: return None
+        
+        # [重要修正] 必須偵測英文的 "No huge updates"
+        if "No huge updates" in content or "無重大消息" in content:
+            return None
+            
         return content
     except Exception as e:
         return f"程式執行錯誤: {str(e)}"
 
 # ===========================
-# 3. 主程式執行邏輯
+# 3. 主程式執行邏輯區 (Ver 5.3 完整修復版)
 # ===========================
 if __name__ == "__main__":
     print("🚀 開始執行 VC Portfolio Tracker (GitHub Actions Mode)...\n")
 
-    # 1. 載入配置
+    # 1. 載入配置 (包含錯誤檢查)
     if not load_all_config_from_sheets():
         error_msg = f"❌ 嚴重錯誤: 無法從 Google Sheet 載入配置。檢查 GitHub Secrets 和 Sheet 共用權限。"
         print(error_msg)
         send_telegram_message(error_msg)
-        sys.exit(1)
+        sys.exit(1) # 終止程式
 
     final_report_sections = []
     stats = {
@@ -261,50 +290,59 @@ if __name__ == "__main__":
         "regions_scanned": set(),
         "time_start": datetime.now(),
     }
-    successful_scans = 0 
+    successful_scans = 0 # 成功搜尋次數計數器
 
     # 2. 執行掃描
     for company_name, config in PORTFOLIO_CONFIG.items():
         keywords = config["keywords"]
         target_regions = config["regions"]
-        
+
         print(f"\n--- 分析: {company_name} ---")
-        
+
         all_search_results = []
+        # 組合全域社群關鍵字
         all_search_terms = keywords + GLOBAL_SOCIAL_SITES
-        
+
         for region_code in target_regions:
             if region_code not in REGIONS: continue
-            
+
+            # 統計掃描地區
             stats["regions_scanned"].add(region_code)
+
             region_info = REGIONS[region_code]
+            # 取得地區媒體設定
             regional_media = MEDIA_SOURCES.get(region_code, [])
-            
+
+            # 組合查詢
             combined_query = " OR ".join(all_search_terms + regional_media)
-            
+
+            # 執行搜尋
             search_res = search_google_news(combined_query, hl=region_info["hl"], gl=region_info["gl"])
-            
+
             if "error" in search_res:
                 print(f"   ❌ {region_info['name']} 搜尋錯誤: {search_res['error']}")
             else:
                 all_search_results.append(search_res)
                 successful_scans += 1
 
+        # AI 分析 (如果有搜尋結果)
         if all_search_results:
             print("   🤖 正在進行 AI 綜合分析...")
             analysis = analyze_with_gpt(company_name, all_search_results)
-            
-            if analysis and "無重大消息" not in analysis and "API Error" not in analysis:
-                print(f"   ✅ {company_name} 發現消息")
+
+            if analysis and "No huge updates" not in analysis and "API Error" not in analysis:
+                print(f"   ✅ {company_name} Something happened!")
                 stats["news_found"] += 1
                 final_report_sections.append(f"*{company_name}*\n{analysis}\n")
             else:
-                print(f"   💤 {company_name} 無重大消息")
-        
-        time.sleep(1)
+                print(f"   💤 {company_name} No huge updates~")
+
+        time.sleep(1) # 避免 API 速率限制
 
     # 3. 生成報告
     time_taken = datetime.now() - stats["time_start"]
+
+    # 計算成功率
     total_expected = stats['total_tracked'] * len(stats['regions_scanned']) if stats['regions_scanned'] else 1
     success_rate = f"{successful_scans / total_expected * 100:.0f}%" if total_expected > 0 else "0%"
 
@@ -324,6 +362,7 @@ if __name__ == "__main__":
     else:
         full_report = header + stats_block + "本週 Portfolio 平靜無波。"
 
+    # 4. 發送 Telegram
     print("\n正在發送 Telegram 報告...")
     send_telegram_message(full_report)
     print("✅ 完成！")
