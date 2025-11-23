@@ -1,3 +1,41 @@
+# 這是您必須貼入 main.py 檔案頂部「核心功能函式區」的內容
+
+def load_all_config_from_sheets():
+    """連線 Google Sheet 並載入所有配置"""
+    global PORTFOLIO_CONFIG, MEDIA_SOURCES, GLOBAL_SOCIAL_SITES
+    
+    try:
+        # 授權與連線
+        gc = gspread.service_account_from_dict(GOOGLE_CREDS_JSON)
+        # 開啟試算表
+        sh = gc.open(SHEET_NAME)
+        print(f"✅ 成功連線 Google Sheet...")
+
+        # --- 1. 載入 Portfolio_Config (公司清單) ---
+        ws_config = sh.worksheet('Portfolio_Config')
+        records = ws_config.get_all_records()
+        
+        # ... (此處省略中間邏輯，請貼上您完整的函式內容)
+        
+        # ... (此處省略中間邏輯，請貼上您完整的函式內容)
+        
+        # ... (此處省略中間邏輯，請貼上您完整的函式內容)
+        
+        # --- 3. 載入 Global_Social_Sites (全球社群媒體) ---
+        ws_social = sh.worksheet('Global_Social_Sites')
+        social_records = ws_social.get_all_records()
+        for record in social_records:
+            if record.get('Source') and record.get('Enable', 'Y').upper() == 'Y':
+                GLOBAL_SOCIAL_SITES.append(record['Source'])
+        print(f"✅ 成功載入 {len(GLOBAL_SOCIAL_SITES)} 個全球社群管道。")
+        
+        return True
+    
+    except Exception as e:
+        print(f"❌ Google Sheet 讀取發生未知錯誤: <Response [200]>")
+        print(f"❌ Configuration Error: 無法從 Google Sheet ({SHEET_NAME}) 載入所有配置。請檢查憑證或 Sheet 權限。")
+        return False
+
 # ==========================================================
 # main.py (Ver 5.4 - GitHub Actions 專用版)
 # 程式碼將從 GitHub Secrets 讀取所有設定
