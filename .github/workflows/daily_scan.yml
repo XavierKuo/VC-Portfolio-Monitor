@@ -1,9 +1,10 @@
 name: Daily Portfolio Scan
 
 on:
-  # 設定每天固定時間自動執行 (台灣時間早上 8 點)
   schedule:
-    - cron: '0 0 * * *' # UTC 00:00，對應 TST/CST 早上 8 點
+    # 修改這裡：分 時 日 月 星期 (UTC 時間)
+    # 30 0 * * 1 代表：每週一的 UTC 00:30 (即台灣週一 08:30)
+    - cron: '30 0 * * 1'
   # 允許手動點擊執行 (方便測試)
   workflow_dispatch: 
 
