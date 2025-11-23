@@ -218,7 +218,6 @@ def analyze_with_gpt(company_name, all_search_results_list):
     【Time Filter】
     - Focus on news between **{seven_days_ago_str} and {today_str}**.
     - **Important Exception**: If a news item has NO date or an ambiguous date (e.g., "Recent"), but the content seems highly relevant and new, **INCLUDE IT**. Do not miss major events due to missing date tags.
-    - Only exclude news clearly marked as "1 year ago", "2023", etc.
     - If no relevant news at all, reply exactly: "No huge updates".
 
     【Consolidation & Deduplication】
