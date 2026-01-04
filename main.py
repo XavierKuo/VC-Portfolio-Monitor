@@ -183,10 +183,10 @@ def analyze_with_gpt(company_name, all_search_results_list):
     prompt = f"""
     Role: You are a Senior Venture Capitalist; 
     Date: Today is {today_str}; 
-    Mission：分析「{company_name}」過去 7 天的重大事實，並嚴格遵守以下分類與格式。
+    Mission：分析「{company_name}」過去 7 天的重要動態，並遵守以下的消息分類與輸出格式。
 
     【High Value Signals & Categorization】
-    請將新聞嚴格分類為以下 6 種英文標籤：
+    請將新聞分類為以下 6 種英文標籤：
     1. [🚨 CRISIS] (公關危機、法律訴訟、負面爭議)
     2. [💰 FUNDING] (募資動態、併購 M&A、上市 IPO)
     3. [🚀 PRODUCT] (新產品發布、重大功能更新)
@@ -195,22 +195,23 @@ def analyze_with_gpt(company_name, all_search_results_list):
     6. [👤 PEOPLE] (核心高層 C-Level 變動)
 
     【核心指令：翻譯與品質】
-    1. **全繁體中文輸出**：標題與摘要必須翻譯為繁體中文（標籤除外）。
-    2. **確保摘要深度**：摘要須包含具體名稱（如合作媒體名、合約金額等）。
-    3. **客觀事實**：嚴禁任何預測或主觀意見。
+    1. **全繁體中文輸出**：無論原始資料是日文或英文，輸出內容（含標題與摘要）必須翻譯為「繁體中文」。
+    2. **確保摘要深度**：摘要應包含具體的事實細節，例如「「具體合作對象」或「營運、財務數據」。不應為了簡短而忽略關鍵名詞。
+    3. **嚴格事實過濾**：僅描述發生的事件，嚴禁 AI 自行發揮預測或推論意見。
 
     【輸出格式規範】
-    1. **Company Header**：第一行必須是 "🏢 **{company_name}**" 且後方空兩行。
-    2. **條目間隔**：不同消息條目之間請空一行。
-    3. **標題格式**：**標籤 | 繁體中文標題**。
-    4. **內容格式**：摘要使用 "-" 開頭，後方換行接 "🔍 Ref."。
-    5. **連結格式**：使用 Markdown `[網站名稱 | 原始標題](原始連結)`。
+    1. **Company Header**：第一行必須是 "🏢 **{company_name}**" 公司名稱需粗體且後方空兩行。
+    2. **數量限制**：每家公司最多提供 3 個最重要的更新。
+    3. **條目間隔**：不同消息條目之間請空一行。
+    4. **標題格式**：**標籤 | 繁體中文標題**。
+    5. **內容格式**：摘要後方換行接 "🔍 Ref."。
+    6. **連結格式**：使用 Markdown `[網站名稱 | 原始標題](原始連結)`。
 
     【輸出範例參考】
     🏢 **SpaceX**
 
     [💰 FUNDING] | SpaceX 成功獲得 NASA 登月計劃新合約
-    - SpaceX 本週正式取得 NASA 價值 2 億美元的合約，將專用於開發星艦系統的著陸技術。
+    SpaceX 本週正式取得 NASA 價值 2 億美元的合約，將專用於開發星艦系統的著陸技術。
     🔍 Ref. [Reuters | SpaceX clinches NASA contract](https://reuters.com/...)
 
     若完全無符合上述類別的新聞，請回覆：No huge updates.
