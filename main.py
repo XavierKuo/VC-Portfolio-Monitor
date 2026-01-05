@@ -320,7 +320,7 @@ if __name__ == "__main__":
         f"• Important Updates: `{stats['news_found']}`\n"
         f"• Regions Scanned: {display_regions}\n\n"
         "📝 *Key Highlights*\n"
-        "━━━━━━━━━━━━━━━━━━━━\n\n"
+        "━━━━━━━━━━━\n\n"
     )
 
     if final_report_sections:
